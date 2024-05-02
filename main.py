@@ -51,8 +51,7 @@ def setup_tables():
   cursor.execute("DROP TABLE IF EXISTS transaction")
   cursor.execute("CREATE TABLE IF NOT EXISTS transaction(\
                   Transaction_id varchar(80) NOT NULL,\
-                  money_received float NOT NULL,\
-                  money_sent float NOT NULL,\
+                  money_gained float NOT NULL,\
                   source varchar(16) NOT NULL,\
                   Username varchar(80),\
                   Business_name varchar(80),\
