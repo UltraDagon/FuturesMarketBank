@@ -40,7 +40,7 @@ def setup_tables():
                   Notification_id varchar(80) NOT NULL,\
                   source varchar(16) NOT NULL,\
                   Username varchar(80),\
-                  Business varchar(80),\
+                  Business_name varchar(80),\
                   type int NOT NULL,\
                   subject varchar(80) NOT NULL,\
                   message varchar(400) NOT NULL,\
@@ -55,7 +55,7 @@ def setup_tables():
                   money_sent float NOT NULL,\
                   source varchar(16) NOT NULL,\
                   Username varchar(80),\
-                  Business varchar(80),\
+                  Business_name varchar(80),\
                   timestamp int NOT NULL,\
                   Refund_id varchar(80) NOT NULL,\
                   PRIMARY KEY(Transaction_id)\
