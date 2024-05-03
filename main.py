@@ -10,7 +10,7 @@ def create_server_connection(host_name, user_name, user_password, database):
       database=database
     )
     print("MySQL Database connection successful")
-  except Error as err:
+  except Exception as err:
     print(f"Error: '{err}'")
 
   return connection
@@ -62,7 +62,7 @@ def setup_tables():
 
   cursor.execute("DROP TABLE IF EXISTS business")
   cursor.execute("CREATE TABLE IF NOT EXISTS business(\
-                  business_name varchar(80) NOT NULL,\
+                  Business_name varchar(80) NOT NULL,\
                   products JSON NOT NULL,\
                   balance float NOT NULL,\
                   refunds JSON NOT NULL,\
@@ -71,8 +71,40 @@ def setup_tables():
                   PRIMARY KEY(business_name)\
                   );")
 
+  cursor.execute("DROP TABLE IF EXISTS benefit")
+  cursor.execute("CREATE TABLE IF NOT EXISTS benefit(\
+                  Benefit_id varchar(80) NOT NULL,\
+                  Product_id varchar(80) NOT NULL,\
+                  discount float NOT NULL,\
+                  PRIMARY KEY(Benefit_id)\
+                  );")
+
+  cursor.execute("DROP TABLE IF EXISTS product")
+  cursor.execute("CREATE TABLE IF NOT EXISTS product(\
+                  Product_id varchar(80) NOT NULL,\
+                  name varchar(80) NOT NULL,\
+                  price float NOT NULL,\
+                  stock int NOT NULL,\
+                  PRIMARY KEY(Product_id)\
+                  );")
+
+  cursor.execute("DROP TABLE IF EXISTS refund")
+  cursor.execute("CREATE TABLE IF NOT EXISTS refund(\
+                    Refund_id varchar(80) NOT NULL,\
+                    Product_id varchar(80) NOT NULL,\
+                    price float NOT NULL,\
+                    Business_name varchar(80) NOT NULL,\
+                    Username varchar(80) NOT NULL,\
+                    PRIMARY KEY(Refund_id)\
+                    );")
+
 
 mydb = create_server_connection("localhost", "root", "auto", "mydatabase")
+if mydb is None:
+  mydb = create_server_connection("localhost", "root", "auto", None)
+  cursor = mydb.cursor(buffered=True)
+  cursor.execute("CREATE DATABASE mydatabase")
+  mydb = create_server_connection("localhost", "root", "auto", "mydatabase")
 
 cursor = mydb.cursor(buffered=True)
 print(mydb.get_server_version())
@@ -98,6 +130,24 @@ for x in cursor:
 
 print("\n")
 cursor.execute("DESC business")
+
+for x in cursor:
+  print(x)
+
+print("\n")
+cursor.execute("DESC benefit")
+
+for x in cursor:
+  print(x)
+
+print("\n")
+cursor.execute("DESC product")
+
+for x in cursor:
+  print(x)
+
+print("\n")
+cursor.execute("DESC refund")
 
 for x in cursor:
   print(x)
