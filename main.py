@@ -1,4 +1,6 @@
 import mysql.connector
+import json
+import datetime
 
 client_info = {"account_type": None, "username": None, "business_name": None}
 
@@ -31,39 +33,105 @@ def notification_count():
     return 0
   return len(cursor.fetchall())
 
-def get_contacts():
-  cursor.execute(f"SELECT contacts FROM user_account WHERE (username = '{client_info['username']}')")
+def get_list(column):
+  cursor.execute(f"SELECT {column} FROM user_account WHERE (username = '{client_info['username']}')")
 
-  if cursor.fetchall()[0][0] is None:
+  get = cursor.fetchall()[0][0]
+
+  if get is None:
     return []
-  return cursor.fetchall()[0]
+  return list(json.loads(get))
+
+def get_balance(username):
+  cursor.execute(f"SELECT balance FROM user_account WHERE (username = '{username}')")
+  return cursor.fetchall()[0][0]
 
 def change_settings():
-  print("--- Settings ---") # Will change 0 to reflect listed's value for the current user
-  print(f"1: listed = {0} - Allows you to be added as a contact (1), or not (0)")
-  print("2: Exit and return to main menu")
-  options = {"1": "listed"}
   while True:
+    print("--- Settings ---")
+    cursor.execute(f"SELECT listed FROM user_account WHERE username = '{client_info['username']}'")
+    print(f"1: listed = {cursor.fetchall()[0][0]} - Allows you to be added as a contact (1), or not (0)")
+    print("2: Exit and return to main menu")
+
     inpt = input()
     if inpt == "1":
       value = input("New value of listed (0/1): ")
-      cursor.execute(f"UPDATE user_account SET listed = {value} WHERE username = '{client_info['username']}'")
+      cursor.execute(f"UPDATE user_account SET listed = {str(value)} WHERE username = '{client_info['username']}'")
+      print(f"Listed has been changed to {value}.")
     elif inpt == "2":
       break
     else:
       print("Unknown option, please try again.")
 
+def make_transaction(source_type, source_name, dest_type, dest_name, money_sent, item_amount=None, refund=None):
+  time = int(str(datetime.datetime.now())[:-7].replace('-','').replace(':','').replace(' ',''))
+
+  if source_type == "user" and dest_type == "user":
+    # destination transaction
+    cursor.execute(f"INSERT INTO transaction (money_gained, source, username, timestamp)\
+                     VALUES ({money_sent}, '{source_type}', '{source_name}', {time})")
+    dest_id = cursor.lastrowid
+
+    dest_balance = get_balance(dest_name) + money_sent
+    cursor.execute(f"UPDATE user_account SET balance = {dest_balance} WHERE username = '{dest_name}'")
+
+
+    # source transaction
+    cursor.execute(f"INSERT INTO transaction (money_gained, source, username, timestamp)\
+                         VALUES ({-1*money_sent}, '{dest_type}', '{dest_name}', {time})")
+    source_id = cursor.lastrowid
+
+def prompt_send_money():
+  print("Choose an account to send money to:")
+  inpt = input("Username: ").lower()
+  cursor.execute(f"SELECT username FROM user_account WHERE (username = '{inpt}')")
+  if len(cursor.fetchall()) > 0:
+    return inpt
+  print("User not found")
+  return None
+
+def send_money(recipient, amount):
+  make_transaction(client_info['account_type'], client_info["username"], 'user', recipient, amount)
+
 def prompt_add_contact():
   print("Add contact:")
   inpt = input("Username: ").lower()
   cursor.execute(f"SELECT username FROM user_account WHERE (username = '{inpt}' and listed = 1)")
-  if cursor.fetchall()[0][0] is not None:
+
+  if str(cursor.fetchall()) != "[]":
     return inpt
-  print("User not found or is set to private.")
+  print("---\nUser not found or is set to private.")
   return None
 
 def add_contact(username):
-  pass
+  current_contacts = get_list("contacts")
+
+  if username in current_contacts:
+    print(f"'{username}' is already in your contacts!")
+    return
+  else:
+    print(f"---\nAdded '{username}' as a contact!")
+
+  current_contacts.append(username)
+
+  cursor.execute(f"UPDATE user_account\
+                   SET contacts = '{json.dumps(current_contacts)}'\
+                   WHERE username = '{client_info['username']}'")
+  mydb.commit()
+
+def remove_contact(num):
+  current_contacts = get_list("contacts")
+
+  if num < 1 or num > len(current_contacts):
+    print(f"Contact #{num} not found.")
+    return
+
+  print(f"---Removed '{current_contacts[num-1]}' from your contacts.")
+  current_contacts.pop(num-1)
+
+  cursor.execute(f"UPDATE user_account\
+                   SET contacts = '{json.dumps(current_contacts)}'\
+                   WHERE username = '{client_info['username']}'")
 
 def prompt_create_user_account():
   prompt = {}
@@ -174,6 +242,10 @@ def command(cmd):
     prompt = prompt_business_login()
     login(prompt, 'business')
 
+  if cmd == "exit":
+    print("Have a wonderful day!")
+    pass
+
   if cmd == "notifications":
     pass
 
@@ -186,11 +258,29 @@ def command(cmd):
 
   if cmd == "add_contact":
     prompt = prompt_add_contact()
-    add_contact(prompt)
+    if prompt is not None:
+      add_contact(prompt)
+
+  if cmd == "remove_contact":
+    prompt = input("Remove contact #: ")
+    remove_contact(int(prompt))
+
+  if cmd == "send_money":
+    prompt = prompt_send_money()
+    if prompt is not None:
+      print("Input amount to send:")
+      amount = round(float(input("Amount: ")), 2)
+      send_money(prompt, amount)
 
   if cmd == "settings":
     change_settings()
     menu_user_main()
+
+  if cmd == "logout":
+    global client_info
+    client_info = {"account_type": None, "username": None, "business_name": None}
+    menu_login()
+
 
 def menu_login():
   print("\n--- Welcome to Futures Market Bank ---")
@@ -199,10 +289,12 @@ def menu_login():
   print("2: Create a business account")
   print("3: Login to an existing user account")
   print("4: Login to an existing business account")
+  print("5: Exit")
   options = {"1": "create_user_account",
              "2": "create_business",
              "3": "user_login",
-             "4": "business_login"}
+             "4": "business_login",
+             "5": "exit"}
 
   while True:
     inpt = input()
@@ -217,23 +309,25 @@ def menu_login():
     menu_business_main()
 
 def menu_user_main():
-  print("\n--- Main Menu: ---")
+  print(f"\n--- Main Menu: --- Balance: {get_balance(client_info['username'])} ---")
   print(f"1: Notifications ({notification_count()})")
   print("2: Transactions")
   print("3: Contacts")
-  print("4: Shop businesses")
+  print("4: Deposit")
   print("5: Send money")
-  print("6: Message user/business")
-  print("7: Settings")
-  print("8: Logout")
+  print("6: Shop businesses")
+  print("7: Message user/business")
+  print("8: Settings")
+  print("9: Logout")
   options = {"1": "notifications",
              "2": "transactions",
              "3": "contacts",
-             "4": "shop_search",
+             "4": "deposit",
              "5": "send_money",
-             "6": "message",
-             "7": "settings",
-             "8": "logout"}
+             "6": "shop_search",
+             "7": "message",
+             "8": "settings",
+             "9": "logout"}
 
   while True:
     inpt = input()
@@ -248,35 +342,40 @@ def menu_business_main():
 
 def menu_contacts():
   print("--- Contacts ---")
-  contacts = get_contacts()
+  contacts = get_list("contacts")
+  print(contacts)
   print(f"Contacts ({len(contacts)}):")
-  for i in range(len(contacts)):
-    line = f"{i}: {contacts[i]}"
+  i = 0
+  while i < len(contacts):
+    line = f"{i+1}: {contacts[i]}"
     if len(contacts) > i+1:
       if len(contacts[i]) <= 35 and len(contacts[i+1]) <= 37:
-        line += line + ' '*(40-len(line)) + f"{i+1}: {contacts[i+1]}"
+        line = line + ' '*(40-len(line)) + f"{i+2}: {contacts[i+1]}"
         i += 1
     print(line)
+
+    i += 1
 
   if len(contacts) == 0:
     print("No contacts.")
 
-  print("---")
-  print("A: Add contact")
-  print("R: Remove contact")
-  print("M: Message contact")
-  print("S: Send money to contact")
-  print("E: Exit and return to main menu")
-  options = {"A": "add_contact",
-             "R": "remove_contact",
-             "M": "message_contact",
-             "S": "send_money_contact",
-             "E": ""}
+  options = {"a": "add_contact",
+             "r": "remove_contact",
+             "m": "message_contact",
+             "s": "send_money_contact"}
 
   while True:
-    inpt = input()
+    print("---")
+    print("A: Add contact")
+    print("R: Remove contact")
+    print("M: Message contact")
+    print("S: Send money to contact")
+    print("E: Exit and return to main menu")
+
+    inpt = input().lower()
     if inpt in options:
       command(options[inpt])
+    elif inpt == "e":
       break
     else:
       print("Unknown option, please try again.")
@@ -315,13 +414,14 @@ def setup_tables():
 
   cursor.execute("DROP TABLE IF EXISTS transaction")
   cursor.execute("CREATE TABLE IF NOT EXISTS transaction(\
-                  Transaction_id varchar(80) NOT NULL,\
+                  Transaction_id MEDIUMINT NOT NULL AUTO_INCREMENT,\
                   money_gained float NOT NULL,\
                   source varchar(16) NOT NULL,\
                   Username varchar(80),\
                   Business_name varchar(80),\
-                  timestamp int NOT NULL,\
-                  Refund_id varchar(80) NOT NULL,\
+                  timestamp BIGINT NOT NULL,\
+                  Refund_id MEDIUMINT DEFAULT NULL,\
+                  item_amount MEDIUMINT DEFAULT NULL,\
                   PRIMARY KEY(Transaction_id)\
                   );")
 
@@ -341,7 +441,7 @@ def setup_tables():
 
   cursor.execute("DROP TABLE IF EXISTS sale")
   cursor.execute("CREATE TABLE IF NOT EXISTS sale(\
-                  Sale_id varchar(80) NOT NULL,\
+                  Sale_id MEDIUMINT NOT NULL AUTO_INCREMENT,\
                   Product_id varchar(80) NOT NULL,\
                   discount float NOT NULL,\
                   employee_only bool NOT NULL,\
@@ -350,7 +450,7 @@ def setup_tables():
 
   cursor.execute("DROP TABLE IF EXISTS product")
   cursor.execute("CREATE TABLE IF NOT EXISTS product(\
-                  Product_id varchar(80) NOT NULL,\
+                  Product_id MEDIUMINT NOT NULL AUTO_INCREMENT,\
                   name varchar(80) NOT NULL,\
                   price float NOT NULL,\
                   stock int NOT NULL,\
@@ -359,7 +459,7 @@ def setup_tables():
 
   cursor.execute("DROP TABLE IF EXISTS refund")
   cursor.execute("CREATE TABLE IF NOT EXISTS refund(\
-                    Refund_id varchar(80) NOT NULL,\
+                    Refund_id MEDIUMINT NOT NULL AUTO_INCREMENT,\
                     Product_id varchar(80) NOT NULL,\
                     price float NOT NULL,\
                     Business_name varchar(80) NOT NULL,\
@@ -367,7 +467,10 @@ def setup_tables():
                     PRIMARY KEY(Refund_id)\
                     );")
 
-#setup_tables()
+setup_tables()
+
+
+#cursor.execute(f"UPDATE user_account SET contacts = '{json.dumps([])}' WHERE username = 'dagonw'")
 
 print("users:")
 cursor.execute("SELECT * FROM user_account")
@@ -380,7 +483,6 @@ for x in cursor.fetchall():
 
 menu_login()
 
-print(client_info)
 mydb.commit()
 '''
 cursor.execute("DESC user_account")
