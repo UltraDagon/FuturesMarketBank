@@ -42,8 +42,11 @@ def get_list(column):
     return []
   return list(json.loads(get))
 
-def get_balance(username):
-  cursor.execute(f"SELECT balance FROM user_account WHERE (username = '{username}')")
+def get_balance(type, name):
+  if type == "user":
+    cursor.execute(f"SELECT balance FROM user_account WHERE (username = '{name}')")
+  if type == "business":
+    cursor.execute(f"SELECT balance FROM business WHERE (business_name = '{name}')")
   return cursor.fetchall()[0][0]
 
 def change_settings():
@@ -72,9 +75,9 @@ def make_transaction(source_type, source_name, dest_type, dest_name, money_sent,
                      VALUES ({money_sent}, '{source_type}', '{source_name}', {time})")
     dest_id = cursor.lastrowid
 
-    dest_balance = get_balance(dest_name) + money_sent
+    dest_balance = get_balance(dest_type, dest_name) + money_sent
     cursor.execute(f"UPDATE user_account SET balance = {dest_balance} WHERE username = '{dest_name}'")
-
+    dest_transactions = ""
 
     # source transaction
     cursor.execute(f"INSERT INTO transaction (money_gained, source, username, timestamp)\
@@ -309,7 +312,7 @@ def menu_login():
     menu_business_main()
 
 def menu_user_main():
-  print(f"\n--- Main Menu: --- Balance: {get_balance(client_info['username'])} ---")
+  print(f"\n--- Main Menu: --- Balance: {get_balance('user', client_info['username'])} ---")
   print(f"1: Notifications ({notification_count()})")
   print("2: Transactions")
   print("3: Contacts")
