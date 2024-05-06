@@ -77,12 +77,26 @@ def make_transaction(source_type, source_name, dest_type, dest_name, money_sent,
 
     dest_balance = get_balance(dest_type, dest_name) + money_sent
     cursor.execute(f"UPDATE user_account SET balance = {dest_balance} WHERE username = '{dest_name}'")
-    dest_transactions = ""
+    dest_transactions = get_list("transactions")
+    dest_transactions.append(dest_id)
+
+    cursor.execute(f"UPDATE user_account\
+                     SET contacts = '{json.dumps(dest_transactions)}'\
+                     WHERE username = '{client_info['username']}'")
 
     # source transaction
     cursor.execute(f"INSERT INTO transaction (money_gained, source, username, timestamp)\
                          VALUES ({-1*money_sent}, '{dest_type}', '{dest_name}', {time})")
     source_id = cursor.lastrowid
+
+    source_balance = get_balance(source_type, source_name) - money_sent
+    cursor.execute(f"UPDATE user_account SET balance = {source_balance} WHERE username = '{source_name}'")
+    source_transactions = get_list("transactions")
+    source_transactions.append(source_id)
+
+    cursor.execute(f"UPDATE user_account\
+                         SET contacts = '{json.dumps(source_transactions)}'\
+                         WHERE username = '{client_info['username']}'")
 
 def prompt_send_money():
   print("Choose an account to send money to:")
@@ -404,7 +418,7 @@ def setup_tables():
 
   cursor.execute("DROP TABLE IF EXISTS notification")
   cursor.execute("CREATE TABLE IF NOT EXISTS notification(\
-                  Notification_id varchar(80) NOT NULL,\
+                  Notification_id MEDIUMINT NOT NULL AUTO_INCREMENT,,\
                   source varchar(16) NOT NULL,\
                   Username varchar(80),\
                   Business_name varchar(80),\
