@@ -109,6 +109,7 @@ def prompt_send_money():
 
 def send_money(recipient, amount):
   make_transaction(client_info['account_type'], client_info["username"], 'user', recipient, amount)
+  #create notification
 
 def prompt_add_contact():
   print("Add contact:")
@@ -355,7 +356,27 @@ def menu_user_main():
       print("Unknown option, please try again.")
 
 def menu_business_main():
-  pass
+  print(f"\n--- Main Menu: --- Balance: {get_balance('business', client_info['business_name'])} ---")
+  print(f"1: Notifications ({notification_count()})")
+  print("2: Transactions")
+  print("3: Deposit")
+  print("4: Add a product")
+  print("5: Update an existing product")
+  print("6: Logout")
+  options = {"1": "notifications",
+             "2": "bus_transactions",
+             "3": "deposit",
+             "4": "add_product",
+             "5": "update_product",
+             "6": "logout"}
+
+  while True:
+    inpt = input()
+    if inpt in options:
+      command(options[inpt])
+      break
+    else:
+      print("Unknown option, please try again.")
 
 def menu_contacts():
   print("--- Contacts ---")
@@ -484,7 +505,7 @@ def setup_tables():
                     PRIMARY KEY(Refund_id)\
                     );")
 
-setup_tables()
+#setup_tables()
 
 
 #cursor.execute(f"UPDATE user_account SET contacts = '{json.dumps([])}' WHERE username = 'dagonw'")
