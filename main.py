@@ -26,15 +26,7 @@ cursor = mydb.cursor(buffered=True)
 print(mydb.get_server_version())
 
 def notification_count():
-  if client_info["account_type"] == "user":
-    cursor.execute(f"SELECT notifications FROM user_account WHERE (username = '{client_info['username']}')")
-  if client_info["account_type"] == "business":
-    cursor.execute(f"SELECT notifications FROM business WHERE (business_name = '{client_info['business_name']}')")
-
-
-  if cursor.fetchall()[0] is None:
-    return 0
-  return len(cursor.fetchall())
+  return len(get_list(client_info["account_type"], "notifications"))
 
 def list_products():
   print("--- Products ---")
@@ -154,18 +146,87 @@ def make_transaction(source_type, source_name, dest_type, dest_name, money_sent,
 
 
     cursor.execute(f"UPDATE user_account\
-                         SET transactions = '{json.dumps(source_transactions)}'\
-                         WHERE username = '{client_info['username']}'")
+                     SET transactions = '{json.dumps(source_transactions)}'\
+                     WHERE username = '{client_info['username']}'")
 
-def create_notification(source, name, msg_type, subject, message):
-  if source == "user":
-    cursor.execute(f"INSERT INTO notifications (source, username, type, subject, message)\
-                     VALUES('{source}', '{name}', '{msg_type}', '{subject}', '{message}')")
+def create_notification(source_type, source_name, dest_type, dest_name, msg_type, subject, message):
+  if source_type == "user":
+    cursor.execute(f"INSERT INTO notification (source, username, type, subject, message)\
+                     VALUES('{source_type}', '{source_name}', '{msg_type}', '{subject}', '{message}')")
+
+  notif_id = cursor.lastrowid
+  notifs = get_list(dest_type, "notifications", dest_name)
+  notifs.append(notif_id)
+
+  if dest_type == "user":
+    cursor.execute(f"UPDATE user_account\
+                     SET notifications = '{json.dumps(notifs)}'\
+                     WHERE username = '{dest_name}'")
+
+def prompt_remove_product():
+  num = input("Enter the number of the product you wish to remove: ")
+  return get_list("business", "products")[int(num) - 1]
+
+def remove_product(num):
+  current_products = get_list("business", "products")
+  cursor.execute(f"SELECT name FROM product\
+                   WHERE Product_id = '{num}'")
+  product = cursor.fetchall()[0][0]
+
+  if num < 1 or num > len(current_products):
+    print(f"Product #{num} not found.")
+    return
+
+  print(f"---\nRemoved '{product}' from your products.")
+  current_products.pop(int(num) - 1)
+  cursor.execute(
+    f"UPDATE business SET products = '{json.dumps(current_products)}' WHERE Business_name = '{client_info['business_name']}'")
 
 
 def prompt_edit_product():
   num = input("Enter the number of the product you wish to edit: ")
-  return get_list("products")[num-1]
+  return get_list("business","products")[int(num) - 1]
+
+
+def menu_product_main(product_id):
+  while True:
+    cursor.execute(f"SELECT name FROM product\
+                   WHERE Product_id = '{product_id}'")
+    product = cursor.fetchall()[0][0]
+    cursor.execute(f"SELECT price FROM product\
+                   WHERE Product_id = '{product_id}'")
+    price = cursor.fetchall()[0][0]
+    cursor.execute(f"SELECT stock FROM product\
+                   WHERE Product_id = '{product_id}'")
+    stock = cursor.fetchall()[0][0]
+    print(f"--- Product: {product} ---")
+    print(f"--- Price: {price} ---")
+    print(f"--- Stock: {stock} ---")
+    print(f"1: Change name")
+    print("2: Change price")
+    print("3: Change stock")
+    print("4: Exit")
+    inpt = input()
+    if inpt == "1":
+      new_name = input("Enter new product name: ")
+      cursor.execute(f"UPDATE product SET name = '{new_name}' WHERE product_id = {product_id}")
+      print(f"Product updated.")
+    elif inpt == "2":
+      new_price = input("Enter new product price: ")
+      cursor.execute(f"UPDATE product SET price = {new_price} WHERE product_id = '{product_id}'")
+      print(f"Product updated.")
+    elif inpt == "3":
+      new_stock = input("Enter new product stock: ")
+      cursor.execute(f"UPDATE product SET stock = {new_stock} WHERE product_id = '{product_id}'")
+      print(f"Product updated.")
+    elif inpt == "4":
+      break
+    else:
+      print("Unknown option, please try again.")
+
+def prompt_edit_product():
+  num = input("Enter the number of the product you wish to edit: ")
+  return get_list("business","products")[int(num)-1]
 
 def prompt_send_money():
   print("Choose an account to send money to:")
@@ -178,7 +239,10 @@ def prompt_send_money():
 
 def send_money(recipient, amount):
   make_transaction(client_info['account_type'], client_info["username"], 'user', recipient, amount)
-  #create notification
+  create_notification(client_info['account_type'], client_info["username"], 'user', recipient,
+                      f"Transaction",\
+                      f"Payment from {client_info['username']}.",
+                      f"You have received a payment of ${amount} from {client_info['username']}.")
 
 def prompt_add_contact():
   print("Add contact:")
@@ -419,6 +483,14 @@ def command(cmd):
     prompt = prompt_edit_product()
     menu_product_main(prompt)
 
+  if cmd == "edit_product":
+    prompt = prompt_edit_product()
+    menu_product_main(prompt)
+
+  if cmd == "remove_product":
+    prompt = prompt_remove_product()
+    remove_product(prompt)
+
 def menu_login():
   print("\n--- Welcome to Futures Market Bank ---")
   print("Please select an option:")
@@ -580,37 +652,6 @@ def menu_transactions():
     else:
       print("Unknown option, please try again")
 
-def menu_product_main(product_id):
-  cursor.execute(f"SELECT name FROM product\
-                   WHERE Product_id =  '{product_id}'")
-  product = cursor.fetchall()[0][0]
-  cursor.execute(f"SELECT price FROM product\
-                   WHERE Product_id =  '{product_id}'")
-  price = cursor.fetchall()[0][0]
-  cursor.execute(f"SELECT stock FROM product\
-                   WHERE Product_id =  '{product_id}'")
-  stock = cursor.fetchall()[0][0]
-  print(f"\n--- Product: {product} ---")
-  print(f"\n--- Price: {price} ---")
-  print(f"\n--- Stock: {stock} ---")
-  print(f"1: Change name")
-  print("2: Change price")
-  print("3: Change stock")
-  print("4: Exit")
-  options = {"1": "change_product_name",
-             "2": "change_product_price",
-             "3": "change_product_stock",}
-
-  while True:
-    inpt = input()
-    if inpt in options:
-      command(options[inpt])
-      break
-    elif inpt == "4":
-      break
-    else:
-      print("Unknown option, please try again.")
-
 def setup_tables():
   #cursor.execute("DROP TABLE IF EXISTS user_account")
   cursor.execute("CREATE TABLE IF NOT EXISTS user_account(\
@@ -630,7 +671,7 @@ def setup_tables():
                   PRIMARY KEY(Username)\
                   );") # Needs something like CONSTRAINT `brand_id` FOREIGN KEY(`brand_id`) REFERENCES `e_store`.`brands`(`id`) ON DELETE RESTRICT ON UPDATE CASCADE , once other tables are added
 
-  cursor.execute("DROP TABLE IF EXISTS notification")
+  #cursor.execute("DROP TABLE IF EXISTS notification")
   cursor.execute("CREATE TABLE IF NOT EXISTS notification(\
                   Notification_id MEDIUMINT NOT NULL AUTO_INCREMENT,\
                   source varchar(16) NOT NULL,\
@@ -700,6 +741,8 @@ def setup_tables():
 
 
 setup_tables()
+#cursor.execute(f"UPDATE user_account SET notifications = Null")
+#mydb.commit()
 
 print("users:")
 cursor.execute("SELECT * FROM user_account")
@@ -710,7 +753,7 @@ cursor.execute("SELECT * FROM business")
 for x in cursor.fetchall():
   print(x)
 
-cursor.execute("SELECT * FROM transaction")
+cursor.execute("SELECT * FROM notification")
 for x in cursor.fetchall():
   print(x)
 
