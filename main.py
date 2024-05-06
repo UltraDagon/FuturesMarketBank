@@ -28,14 +28,19 @@ print(mydb.get_server_version())
 def notification_count():
   if client_info["account_type"] == "user":
     cursor.execute(f"SELECT notifications FROM user_account WHERE (username = '{client_info['username']}')")
+  if client_info["account_type"] == "business":
+    cursor.execute(f"SELECT notifications FROM business WHERE (username = '{client_info['business_name']}')")
+
 
   if cursor.fetchall()[0] is None:
     return 0
   return len(cursor.fetchall())
 
-def get_list(column):
-  cursor.execute(f"SELECT {column} FROM user_account WHERE (username = '{client_info['username']}')")
-
+def get_list(acc_type, column):
+  if acc_type == "user":
+    cursor.execute(f"SELECT {column} FROM user_account WHERE (username = '{client_info['username']}')")
+  if acc_type == "business":
+    cursor.execute(f"SELECT {column} FROM business WHERE (business_name = '{client_info['business_name']}')")
   get = cursor.fetchall()[0][0]
 
   if get is None:
@@ -77,7 +82,7 @@ def make_transaction(source_type, source_name, dest_type, dest_name, money_sent,
 
     dest_balance = get_balance(dest_type, dest_name) + money_sent
     cursor.execute(f"UPDATE user_account SET balance = {dest_balance} WHERE username = '{dest_name}'")
-    dest_transactions = get_list("transactions")
+    dest_transactions = get_list("user", "transactions")
     dest_transactions.append(dest_id)
 
     cursor.execute(f"UPDATE user_account\
@@ -91,7 +96,7 @@ def make_transaction(source_type, source_name, dest_type, dest_name, money_sent,
 
     source_balance = get_balance(source_type, source_name) - money_sent
     cursor.execute(f"UPDATE user_account SET balance = {source_balance} WHERE username = '{source_name}'")
-    source_transactions = get_list("transactions")
+    source_transactions = get_list("user", "transactions")
     source_transactions.append(source_id)
 
     cursor.execute(f"UPDATE user_account\
@@ -122,7 +127,7 @@ def prompt_add_contact():
   return None
 
 def add_contact(username):
-  current_contacts = get_list("contacts")
+  current_contacts = get_list("user", "contacts")
 
   if username in current_contacts:
     print(f"'{username}' is already in your contacts!")
@@ -138,7 +143,7 @@ def add_contact(username):
   mydb.commit()
 
 def remove_contact(num):
-  current_contacts = get_list("contacts")
+  current_contacts = get_list("user", "contacts")
 
   if num < 1 or num > len(current_contacts):
     print(f"Contact #{num} not found.")
@@ -380,7 +385,7 @@ def menu_business_main():
 
 def menu_contacts():
   print("--- Contacts ---")
-  contacts = get_list("contacts")
+  contacts = get_list("user", "contacts")
   print(contacts)
   print(f"Contacts ({len(contacts)}):")
   i = 0
