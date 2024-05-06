@@ -86,7 +86,7 @@ def make_transaction(source_type, source_name, dest_type, dest_name, money_sent,
     dest_transactions.append(dest_id)
 
     cursor.execute(f"UPDATE user_account\
-                     SET contacts = '{json.dumps(dest_transactions)}'\
+                     SET transactions = '{json.dumps(dest_transactions)}'\
                      WHERE username = '{client_info['username']}'")
 
     # source transaction
@@ -100,7 +100,7 @@ def make_transaction(source_type, source_name, dest_type, dest_name, money_sent,
     source_transactions.append(source_id)
 
     cursor.execute(f"UPDATE user_account\
-                         SET contacts = '{json.dumps(source_transactions)}'\
+                         SET transactions = '{json.dumps(source_transactions)}'\
                          WHERE username = '{client_info['username']}'")
 
 def prompt_send_money():
@@ -260,6 +260,19 @@ def create_product():
                    WHERE Business_name = '{client_info['business_name']}'")
   mydb.commit()
 
+def prompt_SMC():
+  print("Contact you would like to send money to:")
+  current_contacts = get_list("contacts")
+  while True:
+    num = int(input("Contact number: "))
+    if num < 1 or num > len(current_contacts):
+      print(f"Contact #{num} not found.")
+    else:
+      print("Input amount to send:")
+      amount = round(float(input("Amount: ")), 2)
+      contact = get_list("contacts")[num]
+      return contact, amount
+
 def command(cmd):
   cmd = cmd.lower()
   if cmd == "create_user_account":
@@ -323,6 +336,10 @@ def command(cmd):
 
   if cmd == "add_product":
     create_product()
+
+  if cmd == 'send_contact_money':
+    contact, amount = prompt_SMC()
+    send_money(contact, amount)
 
 def menu_login():
   print("\n--- Welcome to Futures Market Bank ---")
@@ -405,7 +422,7 @@ def menu_business_main():
 def menu_contacts():
   print("--- Contacts ---")
   contacts = get_list("user", "contacts")
-  print(contacts)
+
   print(f"Contacts ({len(contacts)}):")
   i = 0
   while i < len(contacts):
