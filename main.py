@@ -78,7 +78,7 @@ def list_products():
       print("Unknown option, please try again.")
 
 def get_list(acc_type, column, acc_name=None):
-  if acc_type is None:
+  if acc_name is None:
     if acc_type == "user":
       acc_name = client_info['username']
     if acc_type == "business":
@@ -88,7 +88,13 @@ def get_list(acc_type, column, acc_name=None):
     cursor.execute(f"SELECT {column} FROM user_account WHERE (username = '{acc_name}')")
   if acc_type == "business":
     cursor.execute(f"SELECT {column} FROM business WHERE (business_name = '{acc_name}')")
-  get = cursor.fetchall()[0][0]
+
+  get = cursor.fetchall()
+
+  if len(get) == 0:
+    return get
+
+  get = get[0][0]
 
   if get is None:
     return []
@@ -129,12 +135,12 @@ def make_transaction(source_type, source_name, dest_type, dest_name, money_sent,
 
     dest_balance = get_balance(dest_type, dest_name) + money_sent
     cursor.execute(f"UPDATE user_account SET balance = {dest_balance} WHERE username = '{dest_name}'")
-    dest_transactions = get_list("user", "transactions")
+    dest_transactions = get_list("user", "transactions", dest_name)
     dest_transactions.append(dest_id)
 
     cursor.execute(f"UPDATE user_account\
                      SET transactions = '{json.dumps(dest_transactions)}'\
-                     WHERE username = '{client_info['username']}'")
+                     WHERE username = '{dest_name}'")
 
     # source transaction
     cursor.execute(f"INSERT INTO transaction (money_gained, source, username, timestamp)\
@@ -146,14 +152,20 @@ def make_transaction(source_type, source_name, dest_type, dest_name, money_sent,
     source_transactions = get_list("user", "transactions")
     source_transactions.append(source_id)
 
+
     cursor.execute(f"UPDATE user_account\
                          SET transactions = '{json.dumps(source_transactions)}'\
                          WHERE username = '{client_info['username']}'")
 
 def create_notification(source, name, msg_type, subject, message):
   if source == "user":
-    cursor.execute("INSERT INTO notifications (source, username, type, subject, message)\
-                    ")
+    cursor.execute(f"INSERT INTO notifications (source, username, type, subject, message)\
+                     VALUES('{source}', '{name}', '{msg_type}', '{subject}', '{message}')")
+
+
+def prompt_edit_product():
+  num = input("Enter the number of the product you wish to edit: ")
+  return get_list("products")[num-1]
 
 def prompt_send_money():
   print("Choose an account to send money to:")
@@ -376,6 +388,7 @@ def command(cmd):
       print("Input amount to send:")
       amount = round(float(input("Amount: ")), 2)
       send_money(prompt, amount)
+    menu_user_main()
 
   if cmd == "settings":
     change_settings()
@@ -394,13 +407,17 @@ def command(cmd):
     list_products()
     menu_business_main()
 
-  if cmd == 'send_contact_money':
+  if cmd == 'send_money_contact':
     contact, amount = prompt_SMC()
     send_money(contact, amount)
 
   if cmd == 'transactions':
     menu_transactions()
     menu_user_main()
+
+  if cmd == "edit_product":
+    prompt = prompt_edit_product()
+    menu_product_main(prompt)
 
 def menu_login():
   print("\n--- Welcome to Futures Market Bank ---")
@@ -527,17 +544,28 @@ def menu_transactions():
   print(f"Transactions ({len(transactions)}):")
   i = len(transactions) - 1
   while i >= 0:
-    cursor.execute("SELECT time FROM transaction WHERE transaction_id = id")
+    print(i)
+    cursor.execute(f"SELECT timestamp FROM transaction WHERE transaction_id = {transactions[i]}")
     time = cursor.fetchall()[0][0]
-    cursor.execute("SELECT source_name FROM transaction WHERE transaction_id = id")
+    cursor.execute(f"SELECT source FROM transaction WHERE transaction_id = {transactions[i]}")
     source = cursor.fetchall()[0][0]
-    cursor.execute("SELECT money_gained FROM transaction WHERE transaction_id = id")
+    if source == "user":
+      cursor.execute(f"SELECT username FROM transaction WHERE transaction_id = {transactions[i]}")
+      name = cursor.fetchall()[0][0]
+    if source == "business":
+      cursor.execute(f"SELECT business FROM transaction WHERE transaction_id = {transactions[i]}")
+      name = cursor.fetchall()[0][0]
+    cursor.execute(f"SELECT money_gained FROM transaction WHERE transaction_id = {transactions[i]}")
     money = cursor.fetchall()[0][0]
+
+    time = str(time)
     if money < 0:
       money *= -1
-      print(f"{time[0:4]}-{time[4:6]}-{time[6:8]} {time[8:10]}:{time[10:12]}:{time[12:14]} ) You sent ${money} to {source}")
+      print(f"{time[0:4]}-{time[4:6]}-{time[6:8]} {time[8:10]}:{time[10:12]}:{time[12:14]} ) You sent ${money} to {name}")
     else:
-      print(f"{time[0:4]}-{time[4:6]}-{time[6:8]} {time[8:10]}:{time[10:12]}:{time[12:14]} ) You received ${money} from {source}")
+      print(f"{time[0:4]}-{time[4:6]}-{time[6:8]} {time[8:10]}:{time[10:12]}:{time[12:14]} ) You received ${money} from {name}")
+
+    i -= 1
 
   if len(transactions) == 0:
     print("No transactions.")
@@ -551,6 +579,37 @@ def menu_transactions():
       break
     else:
       print("Unknown option, please try again")
+
+def menu_product_main(product_id):
+  cursor.execute(f"SELECT name FROM product\
+                   WHERE Product_id =  '{product_id}'")
+  product = cursor.fetchall()[0][0]
+  cursor.execute(f"SELECT price FROM product\
+                   WHERE Product_id =  '{product_id}'")
+  price = cursor.fetchall()[0][0]
+  cursor.execute(f"SELECT stock FROM product\
+                   WHERE Product_id =  '{product_id}'")
+  stock = cursor.fetchall()[0][0]
+  print(f"\n--- Product: {product} ---")
+  print(f"\n--- Price: {price} ---")
+  print(f"\n--- Stock: {stock} ---")
+  print(f"1: Change name")
+  print("2: Change price")
+  print("3: Change stock")
+  print("4: Exit")
+  options = {"1": "change_product_name",
+             "2": "change_product_price",
+             "3": "change_product_stock",}
+
+  while True:
+    inpt = input()
+    if inpt in options:
+      command(options[inpt])
+      break
+    elif inpt == "4":
+      break
+    else:
+      print("Unknown option, please try again.")
 
 def setup_tables():
   #cursor.execute("DROP TABLE IF EXISTS user_account")
@@ -639,10 +698,8 @@ def setup_tables():
                     PRIMARY KEY(Refund_id)\
                     );")
 
+
 setup_tables()
-
-
-#cursor.execute(f"UPDATE user_account SET contacts = '{json.dumps([])}' WHERE username = 'dagonw'")
 
 print("users:")
 cursor.execute("SELECT * FROM user_account")
@@ -653,7 +710,7 @@ cursor.execute("SELECT * FROM business")
 for x in cursor.fetchall():
   print(x)
 
-cursor.execute("SELECT * FROM product")
+cursor.execute("SELECT * FROM transaction")
 for x in cursor.fetchall():
   print(x)
 
