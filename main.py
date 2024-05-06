@@ -418,7 +418,7 @@ def setup_tables():
 
   cursor.execute("DROP TABLE IF EXISTS notification")
   cursor.execute("CREATE TABLE IF NOT EXISTS notification(\
-                  Notification_id MEDIUMINT NOT NULL AUTO_INCREMENT,,\
+                  Notification_id MEDIUMINT NOT NULL AUTO_INCREMENT,\
                   source varchar(16) NOT NULL,\
                   Username varchar(80),\
                   Business_name varchar(80),\
