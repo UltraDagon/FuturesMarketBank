@@ -29,33 +29,33 @@ def notification_count():
   return len(get_list(client_info["account_type"], "notifications"))
 
 def list_products():
-  print("--- Products ---")
-  products = get_list("business","products")
-  print(f"Products ({len(products)}):")
-  i = 0
-  while i < len(products):
-    cursor.execute(f"SELECT name FROM product\
-                     WHERE Product_id =  '{products[i]}'")
-    product = cursor.fetchall()[0][0]
-    line = f"{i+1}: {product}"
-    if len(products) > i+1:
-      cursor.execute(f"SELECT name FROM product\
-                       WHERE Product_id =  '{products[i + 1]}'")
-      next_product = cursor.fetchall()[0][0]
-      if len(product) <= 35 and len(next_product) <= 37:
-        line = line + ' '*(40-len(line)) + f"{i+2}: {next_product}"
-        i += 1
-    print(line)
-
-    i += 1
-
-  if len(products) == 0:
-    print("No products.")
-
   options = {"r": "remove_product",
              "x": "edit_product"}
 
   while True:
+    print("--- Products ---")
+    products = get_list("business", "products")
+    print(f"Products ({len(products)}):")
+    i = 0
+    while i < len(products):
+      cursor.execute(f"SELECT name FROM product\
+                         WHERE Product_id =  '{products[i]}'")
+      product = cursor.fetchall()[0][0]
+      line = f"{i + 1}: {product}"
+      if len(products) > i + 1:
+        cursor.execute(f"SELECT name FROM product\
+                           WHERE Product_id =  '{products[i + 1]}'")
+        next_product = cursor.fetchall()[0][0]
+        if len(product) <= 35 and len(next_product) <= 37:
+          line = line + ' ' * (40 - len(line)) + f"{i + 2}: {next_product}"
+          i += 1
+      print(line)
+
+      i += 1
+
+    if len(products) == 0:
+      print("No products.")
+
     print("---")
     print("R: Remove product")
     print("X: Edit product")
@@ -163,6 +163,11 @@ def create_notification(source_type, source_name, dest_type, dest_name, msg_type
                      SET notifications = '{json.dumps(notifs)}'\
                      WHERE username = '{dest_name}'")
 
+def make_deposit(amount):
+  if client_info["account_type"] == "user":
+    bal = get_balance("user", client_info["username"]) + amount
+    cursor.execute(f"UPDATE user_account SET balance = {bal} WHERE username = '{client_info['username']}'")
+
 def prompt_remove_product():
   num = input("Enter the number of the product you wish to remove: ")
   return get_list("business", "products")[int(num) - 1]
@@ -223,10 +228,6 @@ def menu_product_main(product_id):
       break
     else:
       print("Unknown option, please try again.")
-
-def prompt_edit_product():
-  num = input("Enter the number of the product you wish to edit: ")
-  return get_list("business","products")[int(num)-1]
 
 def prompt_send_money():
   print("Choose an account to send money to:")
@@ -483,13 +484,16 @@ def command(cmd):
     prompt = prompt_edit_product()
     menu_product_main(prompt)
 
-  if cmd == "edit_product":
-    prompt = prompt_edit_product()
-    menu_product_main(prompt)
-
   if cmd == "remove_product":
     prompt = prompt_remove_product()
     remove_product(prompt)
+
+  if cmd == "deposit":
+    make_deposit(float(input("Deposit amount: ")))
+    if client_info["account_type"] == "user":
+      menu_user_main()
+    if client_info["account_type"] == "business":
+      menu_business_main()
 
 def menu_login():
   print("\n--- Welcome to Futures Market Bank ---")
