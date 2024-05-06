@@ -29,7 +29,7 @@ def notification_count():
   if client_info["account_type"] == "user":
     cursor.execute(f"SELECT notifications FROM user_account WHERE (username = '{client_info['username']}')")
   if client_info["account_type"] == "business":
-    cursor.execute(f"SELECT notifications FROM business WHERE (username = '{client_info['business_name']}')")
+    cursor.execute(f"SELECT notifications FROM business WHERE (business_name = '{client_info['business_name']}')")
 
 
   if cursor.fetchall()[0] is None:
@@ -243,6 +243,23 @@ def login(name, account_type):
   elif account_type == 'business':
     client_info['business_name'] = name
 
+def create_product():
+  print("Add a product:")
+  name = input("Product name: ")
+  price = input("Product price: ")
+  stock = input("Product stock: ")
+  cursor.execute(f"INSERT INTO product (name, price, stock)\
+                   VALUES ('{name}', '{price}', '{stock}')")
+  pid = cursor.lastrowid
+
+  print("Added product!")
+  current_products = get_list("business", "products")
+  current_products.append(pid)
+  cursor.execute(f"UPDATE business\
+                   SET products = '{json.dumps(current_products)}'\
+                   WHERE Business_name = '{client_info['business_name']}'")
+  mydb.commit()
+
 def command(cmd):
   cmd = cmd.lower()
   if cmd == "create_user_account":
@@ -304,6 +321,8 @@ def command(cmd):
     client_info = {"account_type": None, "username": None, "business_name": None}
     menu_login()
 
+  if cmd == "add_product":
+    create_product()
 
 def menu_login():
   print("\n--- Welcome to Futures Market Bank ---")
@@ -332,7 +351,7 @@ def menu_login():
     menu_business_main()
 
 def menu_user_main():
-  print(f"\n--- Main Menu: --- Balance: {get_balance('user', client_info['username'])} ---")
+  print(f"\n--- Main Menu --- Balance: {get_balance('user', client_info['username'])} ---")
   print(f"1: Notifications ({notification_count()})")
   print("2: Transactions")
   print("3: Contacts")
@@ -361,7 +380,7 @@ def menu_user_main():
       print("Unknown option, please try again.")
 
 def menu_business_main():
-  print(f"\n--- Main Menu: --- Balance: {get_balance('business', client_info['business_name'])} ---")
+  print(f"\n--- Main Menu --- Balance: {get_balance('business', client_info['business_name'])} ---")
   print(f"1: Notifications ({notification_count()})")
   print("2: Transactions")
   print("3: Deposit")
@@ -448,14 +467,14 @@ def setup_tables():
                   source varchar(16) NOT NULL,\
                   Username varchar(80),\
                   Business_name varchar(80),\
-                  type int NOT NULL,\
+                  type varchar(16) NOT NULL,\
                   subject varchar(80) NOT NULL,\
                   message varchar(400) NOT NULL,\
                   Refund_id varchar(80),\
                   PRIMARY KEY(Notification_id)\
                   );")
 
-  cursor.execute("DROP TABLE IF EXISTS transaction")
+  #cursor.execute("DROP TABLE IF EXISTS transaction")
   cursor.execute("CREATE TABLE IF NOT EXISTS transaction(\
                   Transaction_id MEDIUMINT NOT NULL AUTO_INCREMENT,\
                   money_gained float NOT NULL,\
@@ -468,7 +487,7 @@ def setup_tables():
                   PRIMARY KEY(Transaction_id)\
                   );")
 
-  cursor.execute("DROP TABLE IF EXISTS business")
+  #cursor.execute("DROP TABLE IF EXISTS business")
   cursor.execute("CREATE TABLE IF NOT EXISTS business(\
                   Business_name varchar(80) NOT NULL,\
                   password varchar(80) NOT NULL,\
@@ -491,7 +510,7 @@ def setup_tables():
                   PRIMARY KEY(Sale_id)\
                   );")
 
-  cursor.execute("DROP TABLE IF EXISTS product")
+  #cursor.execute("DROP TABLE IF EXISTS product")
   cursor.execute("CREATE TABLE IF NOT EXISTS product(\
                   Product_id MEDIUMINT NOT NULL AUTO_INCREMENT,\
                   name varchar(80) NOT NULL,\
@@ -510,7 +529,7 @@ def setup_tables():
                     PRIMARY KEY(Refund_id)\
                     );")
 
-#setup_tables()
+setup_tables()
 
 
 #cursor.execute(f"UPDATE user_account SET contacts = '{json.dumps([])}' WHERE username = 'dagonw'")
@@ -521,6 +540,10 @@ for x in cursor.fetchall():
   print(x)
 print("businesses:")
 cursor.execute("SELECT * FROM business")
+for x in cursor.fetchall():
+  print(x)
+
+cursor.execute("SELECT * FROM product")
 for x in cursor.fetchall():
   print(x)
 
