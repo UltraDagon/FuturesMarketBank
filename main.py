@@ -116,7 +116,7 @@ def change_settings():
     else:
       print("Unknown option, please try again.")
 
-def make_transaction(source_type, source_name, dest_type, dest_name, money_sent, item_amount=None, refund=None):
+def make_transaction(source_type, source_name, dest_type, dest_name, money_sent, keep_balance=False, item_amount=None, refund=None):
   time = int(str(datetime.datetime.now())[:-7].replace('-','').replace(':','').replace(' ',''))
 
   if source_type == "user" and dest_type == "user":
@@ -126,7 +126,8 @@ def make_transaction(source_type, source_name, dest_type, dest_name, money_sent,
     dest_id = cursor.lastrowid
 
     dest_balance = get_balance(dest_type, dest_name) + money_sent
-    cursor.execute(f"UPDATE user_account SET balance = {dest_balance} WHERE username = '{dest_name}'")
+    if not keep_balance:
+      cursor.execute(f"UPDATE user_account SET balance = {dest_balance} WHERE username = '{dest_name}'")
     dest_transactions = get_list("user", "transactions", dest_name)
     dest_transactions.append(dest_id)
 
@@ -140,7 +141,8 @@ def make_transaction(source_type, source_name, dest_type, dest_name, money_sent,
     source_id = cursor.lastrowid
 
     source_balance = get_balance(source_type, source_name) - money_sent
-    cursor.execute(f"UPDATE user_account SET balance = {source_balance} WHERE username = '{source_name}'")
+    if not keep_balance:
+      cursor.execute(f"UPDATE user_account SET balance = {source_balance} WHERE username = '{source_name}'")
     source_transactions = get_list("user", "transactions")
     source_transactions.append(source_id)
 
@@ -148,6 +150,37 @@ def make_transaction(source_type, source_name, dest_type, dest_name, money_sent,
     cursor.execute(f"UPDATE user_account\
                      SET transactions = '{json.dumps(source_transactions)}'\
                      WHERE username = '{client_info['username']}'")
+
+  elif source_type == "user" and dest_type == "business":
+    # destination transaction
+    cursor.execute(f"INSERT INTO transaction (money_gained, source, username, timestamp)\
+                         VALUES ({money_sent}, '{source_type}', '{source_name}', {time})")
+    dest_id = cursor.lastrowid
+
+    dest_balance = get_balance(dest_type, dest_name) + money_sent
+    if not keep_balance:
+      cursor.execute(f"UPDATE business SET balance = {dest_balance} WHERE business_name = '{dest_name}'")
+    dest_transactions = get_list("business", "transactions", dest_name)
+    dest_transactions.append(dest_id)
+
+    cursor.execute(f"UPDATE business\
+                         SET transactions = '{json.dumps(dest_transactions)}'\
+                         WHERE business_name = '{dest_name}'")
+
+    # source transaction
+    cursor.execute(f"INSERT INTO transaction (money_gained, source, username, timestamp)\
+                             VALUES ({-1 * money_sent}, '{dest_type}', '{dest_name}', {time})")
+    source_id = cursor.lastrowid
+
+    source_balance = get_balance(source_type, source_name) - money_sent
+    if not keep_balance:
+      cursor.execute(f"UPDATE user_account SET balance = {source_balance} WHERE username = '{source_name}'")
+    source_transactions = get_list("user", "transactions")
+    source_transactions.append(source_id)
+
+    cursor.execute(f"UPDATE user_account\
+                         SET transactions = '{json.dumps(source_transactions)}'\
+                         WHERE username = '{client_info['username']}'")
 
 def create_notification(source_type, source_name, dest_type, dest_name, msg_type, subject, message):
   if source_type == "user":
@@ -167,6 +200,105 @@ def make_deposit(amount):
   if client_info["account_type"] == "user":
     bal = get_balance("user", client_info["username"]) + amount
     cursor.execute(f"UPDATE user_account SET balance = {bal} WHERE username = '{client_info['username']}'")
+  elif client_info["account_type"] == "business":
+    bal = get_balance("business", client_info["business_name"]) + amount
+    cursor.execute(f"UPDATE business SET balance = {bal} WHERE business_name = '{client_info['business_name']}'")
+
+def menu_shop_search():
+  while True:
+    print(f"\n--- Shop Search: ---")
+    print(f"1: List All Businesses")
+    print("2: Select a Business to Shop From")
+    print("3: Exit")
+    options = {"1": "list_businesses",
+               "2": "select_business"}
+    inpt = input()
+    if inpt in options:
+      command(options[inpt])
+    elif inpt == "3":
+      break
+    else:
+      print("Unknown option, please try again.")
+
+def list_businesses():
+  cursor.execute(f"SELECT Business_name FROM business")
+  rows = cursor.fetchall()
+  for row in rows:
+    print(row[0])
+
+def prompt_select_business():
+  while True:
+    name = input("Enter the name of the business you wish to visit: ")
+    cursor.execute(f"SELECT Business_name FROM business WHERE (Business_name = '{name}')")
+    if len(cursor.fetchall()) > 0:
+      return name
+    print("Business name does not exist, try again [Business names are case sensitive!]")
+
+def menu_shop(business_name):
+  while True:
+    print(f"\n--- Welcome to '{business_name}'! ---")
+    print(f"1: View products")
+    print("2: Purchase product")
+    print("3: Exit")
+    options = {"1": "view_products_customer",
+               "2": "purchase_product"}
+
+    inpt = input()
+    if inpt == "1":
+      print("--- Products ---")
+      products = get_list("business", "products", business_name)
+      print(f"Products ({len(products)}):")
+      i = 0
+      while i < len(products):
+        cursor.execute(f"SELECT name FROM product\
+                         WHERE Product_id =  '{products[i]}'")
+        product = cursor.fetchall()[0][0]
+        cursor.execute(f"SELECT price FROM product\
+                         WHERE Product_id =  '{products[i]}'")
+        price = cursor.fetchall()[0][0]
+        cursor.execute(f"SELECT stock FROM product\
+                         WHERE Product_id =  '{products[i]}'")
+        stock = cursor.fetchall()[0][0]
+        line = f"{i + 1}: {product} : Price ${price}, Stock: {stock}"
+        print(line)
+
+        i += 1
+      if len(products) == 0:
+        print("No products.")
+    elif inpt == "2":
+      pNum = int(input("Enter the product number of the product you wish to purchase: "))
+      pCount = int(input("Enter how much you want to buy: "))
+      pBig = get_list("business", "products", business_name)[pNum - 1]
+      cursor.execute(f"SELECT name FROM product\
+                       WHERE Product_id =  '{pBig}'")
+      product = cursor.fetchall()[0][0]
+      cursor.execute(f"SELECT price FROM product\
+                       WHERE Product_id =  '{pBig}'")
+      price = cursor.fetchall()[0][0]
+      cursor.execute(f"SELECT stock FROM product\
+                       WHERE Product_id =  '{pBig}'")
+      stock = cursor.fetchall()[0][0]
+      if pCount > stock:
+        print("Error: Requested amount greater than current stock.")
+        continue
+      stock = stock - pCount
+      balance = get_balance("user", client_info['username'])
+      if (price * pCount) > balance:
+        print("Error: User cannot afford the requested product(s)")
+        continue
+      balance = balance - (price * pCount)
+      business_balance = get_balance("business", business_name)
+      business_balance = business_balance + (price * pCount)
+      print(f"Purchase success! New balance is {balance}.")
+      cursor.execute(f"UPDATE user_account SET balance = {int(balance)} WHERE username = '{client_info['username']}'")
+      cursor.execute(f"UPDATE product SET stock = {stock} WHERE Product_id = '{pBig}'")
+      cursor.execute(f"UPDATE business SET balance = {business_balance} WHERE Business_name = '{business_name}'")
+
+      make_transaction("user", client_info['username'], "business", business_name, price * pCount, True)
+    elif inpt == "3":
+      break
+    else:
+      print("Unknown option, please try again.")
 
 def prompt_remove_product():
   num = input("Enter the number of the product you wish to remove: ")
@@ -187,11 +319,9 @@ def remove_product(num):
   cursor.execute(
     f"UPDATE business SET products = '{json.dumps(current_products)}' WHERE Business_name = '{client_info['business_name']}'")
 
-
 def prompt_edit_product():
   num = input("Enter the number of the product you wish to edit: ")
   return get_list("business","products")[int(num) - 1]
-
 
 def menu_product_main(product_id):
   while True:
@@ -278,7 +408,7 @@ def remove_contact(num):
     print(f"Contact #{num} not found.")
     return
 
-  print(f"---Removed '{current_contacts[num-1]}' from your contacts.")
+  print(f"---\nRemoved '{current_contacts[num-1]}' from your contacts.")
   current_contacts.pop(num-1)
 
   cursor.execute(f"UPDATE user_account\
@@ -369,8 +499,10 @@ def login(name, account_type):
   client_info['account_type'] = account_type
   if account_type == 'user':
     client_info['username'] = name
+    client_info['business_name'] = None
   elif account_type == 'business':
     client_info['business_name'] = name
+    client_info['username'] = None
 
 def create_product():
   print("Add a product:")
@@ -391,7 +523,7 @@ def create_product():
 
 def prompt_SMC():
   print("Contact you would like to send money to:")
-  current_contacts = get_list("contacts")
+  current_contacts = get_list("user", "contacts")
   while True:
     num = int(input("Contact number: "))
     if num < 1 or num > len(current_contacts):
@@ -399,8 +531,27 @@ def prompt_SMC():
     else:
       print("Input amount to send:")
       amount = round(float(input("Amount: ")), 2)
-      contact = get_list("contacts")[num-1]
+      contact = get_list("user", "contacts")[num-1]
       return contact, amount
+
+def prompt_SCM():
+  print("Contact you would like to send a message to:")
+  current_contacts = get_list("user","contacts")
+  while True:
+    num = int(input("Contact number: "))
+    if num < 1 or num > len(current_contacts):
+      print(f"Contact #{num} not found.")
+    else:
+      print("Message you would like to send:")
+      inpt = input("Message: ")
+      print("Confirm sending?")
+      choice = input("Y/N: ").lower()
+      if choice == 'y':
+        contact = get_list("user","contacts")[num-1]
+        return contact, inpt
+      else:
+        print("Redoing message")
+        continue
 
 def command(cmd):
   cmd = cmd.lower()
@@ -429,10 +580,11 @@ def command(cmd):
     pass
 
   if cmd == "notifications":
-    pass
-
-  if cmd == "transactions":
-    pass
+    menu_notifications()
+    if client_info["account_type"] == "user":
+      menu_user_main()
+    elif client_info["account_type"] == "business":
+      menu_business_main()
 
   if cmd == "contacts":
     menu_contacts()
@@ -460,8 +612,6 @@ def command(cmd):
     menu_user_main()
 
   if cmd == "logout":
-    global client_info
-    client_info = {"account_type": None, "username": None, "business_name": None}
     menu_login()
 
   if cmd == "add_product":
@@ -478,7 +628,10 @@ def command(cmd):
 
   if cmd == 'transactions':
     menu_transactions()
-    menu_user_main()
+    if client_info["account_type"] == "user":
+      menu_user_main()
+    elif client_info["account_type"] == "business":
+      menu_business_main()
 
   if cmd == "edit_product":
     prompt = prompt_edit_product()
@@ -494,6 +647,22 @@ def command(cmd):
       menu_user_main()
     if client_info["account_type"] == "business":
       menu_business_main()
+
+  if cmd == "select_business":
+    prompt = prompt_select_business()
+    menu_shop(prompt)
+
+  if cmd == "list_businesses":
+    list_businesses()
+
+  if cmd == "menu_shop_search":
+    menu_shop_search()
+    menu_user_main()
+
+  if cmd == 'send_contact_message':
+    contact, mes = prompt_SCM()
+    create_notification("user", client_info["username"], "user", contact, "Message",\
+                        f"New Message from {client_info['username']}", mes)
 
 def menu_login():
   print("\n--- Welcome to Futures Market Bank ---")
@@ -513,6 +682,8 @@ def menu_login():
     inpt = input()
     if inpt in options:
       command(options[inpt])
+      if inpt == "5":
+        return
       break
     else:
       print("Unknown option, please try again.")
@@ -529,18 +700,16 @@ def menu_user_main():
   print("4: Deposit")
   print("5: Send money")
   print("6: Shop businesses")
-  print("7: Message user/business")
-  print("8: Settings")
-  print("9: Logout")
+  print("7: Settings")
+  print("8: Logout")
   options = {"1": "notifications",
              "2": "transactions",
              "3": "contacts",
              "4": "deposit",
              "5": "send_money",
-             "6": "shop_search",
-             "7": "message",
-             "8": "settings",
-             "9": "logout"}
+             "6": "menu_shop_search",
+             "7": "settings",
+             "8": "logout"}
 
   while True:
     inpt = input()
@@ -559,7 +728,7 @@ def menu_business_main():
   print("5: View products")
   print("6: Logout")
   options = {"1": "notifications",
-             "2": "bus_transactions",
+             "2": "transactions",
              "3": "deposit",
              "4": "add_product",
              "5": "view_products",
@@ -594,7 +763,7 @@ def menu_contacts():
 
   options = {"a": "add_contact",
              "r": "remove_contact",
-             "m": "message_contact",
+             "m": "send_contact_message",
              "s": "send_money_contact"}
 
   while True:
@@ -615,12 +784,11 @@ def menu_contacts():
 
 def menu_transactions():
   print("--- Transactions ---")
-  transactions = get_list("user", "transactions")
+  transactions = get_list(client_info['account_type'], "transactions")
 
   print(f"Transactions ({len(transactions)}):")
   i = len(transactions) - 1
   while i >= 0:
-    print(i)
     cursor.execute(f"SELECT timestamp FROM transaction WHERE transaction_id = {transactions[i]}")
     time = cursor.fetchall()[0][0]
     cursor.execute(f"SELECT source FROM transaction WHERE transaction_id = {transactions[i]}")
@@ -629,8 +797,8 @@ def menu_transactions():
       cursor.execute(f"SELECT username FROM transaction WHERE transaction_id = {transactions[i]}")
       name = cursor.fetchall()[0][0]
     if source == "business":
-      cursor.execute(f"SELECT business FROM transaction WHERE transaction_id = {transactions[i]}")
-      name = cursor.fetchall()[0][0]
+      cursor.execute(f"SELECT username FROM transaction WHERE transaction_id = {transactions[i]}")
+      name = (cursor.fetchall()[0][0])
     cursor.execute(f"SELECT money_gained FROM transaction WHERE transaction_id = {transactions[i]}")
     money = cursor.fetchall()[0][0]
 
@@ -645,6 +813,47 @@ def menu_transactions():
 
   if len(transactions) == 0:
     print("No transactions.")
+
+  while True:
+    print("---")
+    print("E: Exit and return to main menu")
+
+    inpt = input().lower()
+    if inpt == "e":
+      break
+    else:
+      print("Unknown option, please try again")
+
+def menu_notifications():
+  print("--- Notifications ---")
+  notifications = get_list(client_info['account_type'], "notifications")
+
+  print(f"Notifications ({len(notifications)}):")
+  i = len(notifications) - 1
+  while i >= 0:
+    cursor.execute(f"SELECT source FROM notification WHERE notification_id = {notifications[i]}")
+    source = cursor.fetchall()[0][0]
+    if source == "user":
+      cursor.execute(f"SELECT username FROM notification WHERE notification_id = {notifications[i]}")
+      name = cursor.fetchall()[0][0]
+    if source == "business":
+      cursor.execute(f"SELECT username FROM notification WHERE notification_id = {notifications[i]}")
+      name = (cursor.fetchall()[0][0])
+    cursor.execute(f"SELECT type FROM notification WHERE notification_id = {notifications[i]}")
+    m_type = cursor.fetchall()[0][0]
+    cursor.execute(f"SELECT subject FROM notification WHERE notification_id = {notifications[i]}")
+    subject = cursor.fetchall()[0][0]
+    cursor.execute(f"SELECT message FROM notification WHERE notification_id = {notifications[i]}")
+    message = cursor.fetchall()[0][0]
+
+    print(f"{m_type}) From {name}: {subject}")
+    print(message)
+    print("")
+
+    i -= 1
+
+  if len(notifications) == 0:
+    print("No notifications.")
 
   while True:
     print("---")
@@ -748,7 +957,7 @@ setup_tables()
 #cursor.execute(f"UPDATE user_account SET notifications = Null")
 #mydb.commit()
 
-print("users:")
+'''print("users:")
 cursor.execute("SELECT * FROM user_account")
 for x in cursor.fetchall():
   print(x)
@@ -757,53 +966,10 @@ cursor.execute("SELECT * FROM business")
 for x in cursor.fetchall():
   print(x)
 
-cursor.execute("SELECT * FROM notification")
+cursor.execute("SELECT * FROM transaction")
 for x in cursor.fetchall():
-  print(x)
+  print(x)'''
 
 menu_login()
 
 mydb.commit()
-'''
-cursor.execute("DESC user_account")
-
-for x in cursor:
-  print(x)
-
-print("\n")
-cursor.execute("DESC notification")
-
-for x in cursor:
-  print(x)
-
-print("\n")
-cursor.execute("DESC transaction")
-
-for x in cursor:
-  print(x)
-
-print("\n")
-cursor.execute("DESC business")
-
-for x in cursor:
-  print(x)
-
-print("\n")
-cursor.execute("DESC sale")
-
-for x in cursor:
-  print(x)
-
-print("\n")
-cursor.execute("DESC product")
-
-for x in cursor:
-  print(x)
-
-print("\n")
-cursor.execute("DESC refund")
-
-for x in cursor:
-  print(x)
-'''
-
